@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WiFiRangeLogger GPS Bridge</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #f3f4f6;
+      color: #111827;
+    }
+
+    main {
+      width: min(34rem, calc(100vw - 2rem));
+      display: grid;
+      gap: 1rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+
+    button {
+      min-height: 3rem;
+      border: 0;
+      border-radius: 0.5rem;
+      background: #0f766e;
+      color: white;
+      font: inherit;
+      font-weight: 700;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+    }
+
+    pre {
+      min-height: 12rem;
+      padding: 1rem;
+      overflow: auto;
+      border-radius: 0.5rem;
+      background: #111827;
+      color: #d1fae5;
+      white-space: pre-wrap;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #111827;
+        color: #f9fafb;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>WiFiRangeLogger GPS Bridge</h1>
+    <button id="connect">Connect ESP32</button>
+    <button id="dump" disabled>Ask ESP32 to Dump Log</button>
+    <button id="erase" disabled>Erase ESP32 Log</button>
+    <pre id="log">Open this page in Chrome on Android. It must be served from HTTPS, such as GitHub Pages.</pre>
+  </main>
+
+  <script>
+    const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+    const RX_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+    const TX_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+    const connectButton = document.querySelector('#connect');
+    const dumpButton = document.querySelector('#dump');
+    const eraseButton = document.querySelector('#erase');
+    const log = document.querySelector('#log');
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    let rxCharacteristic;
+    let watchId;
+
+    function writeLine(message) {
+      log.textContent += `\n${new Date().toLocaleTimeString()} ${message}`;
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function send(text) {
+      if (!rxCharacteristic) return;
+      await rxCharacteristic.writeValueWithoutResponse(encoder.encode(text));
+    }
+
+    function sendPosition(position) {
+      const coords = position.coords;
+      const fix = {
+        lat: coords.latitude,
+        lon: coords.longitude,
+        alt: coords.altitude,
+        accuracy: coords.accuracy,
+        speed: coords.speed
+      };
+      send(JSON.stringify(fix)).catch(error => writeLine(`send failed: ${error.message}`));
+      writeLine(`gps ${fix.lat.toFixed(6)}, ${fix.lon.toFixed(6)} acc ${Math.round(fix.accuracy)}m`);
+    }
+
+    connectButton.addEventListener('click', async () => {
+      try {
+        if (!navigator.bluetooth) {
+          writeLine('Web Bluetooth is not available in this browser. Use Chrome on Android.');
+          return;
+        }
+
+        if (!navigator.geolocation) {
+          writeLine('Geolocation is not available in this browser.');
+          return;
+        }
+
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ namePrefix: 'WiFiRangeLogger' }],
+          optionalServices: [SERVICE_UUID]
+        });
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        rxCharacteristic = await service.getCharacteristic(RX_UUID);
+        const txCharacteristic = await service.getCharacteristic(TX_UUID);
+        await txCharacteristic.startNotifications();
+        txCharacteristic.addEventListener('characteristicvaluechanged', event => {
+          writeLine(`esp32 ${decoder.decode(event.target.value)}`);
+        });
+
+        watchId = navigator.geolocation.watchPosition(sendPosition, error => {
+          writeLine(`gps error: ${error.message}`);
+        }, {
+          enableHighAccuracy: true,
+          maximumAge: 1000,
+          timeout: 15000
+        });
+
+        device.addEventListener('gattserverdisconnected', () => {
+          rxCharacteristic = undefined;
+          dumpButton.disabled = true;
+          eraseButton.disabled = true;
+          if (watchId) navigator.geolocation.clearWatch(watchId);
+          writeLine('disconnected');
+        });
+
+        dumpButton.disabled = false;
+        eraseButton.disabled = false;
+        writeLine('connected; GPS streaming started');
+      } catch (error) {
+        writeLine(error.message);
+      }
+    });
+
+    dumpButton.addEventListener('click', () => send('DUMP'));
+    eraseButton.addEventListener('click', () => send('ERASE'));
+  </script>
+</body>
+</html>
+
