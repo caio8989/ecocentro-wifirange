@@ -148,7 +148,7 @@ The expected bounds JSON shape is:
 }
 ```
 
-If you add a predefined image at `docs/assets/map.png`, the page can load it automatically from GitHub Pages. Otherwise, use the map image file picker; the image stays local in the browser.
+This repository includes a predefined map at `docs/assets/map.png` and its calibration at `docs/assets/map-bounds.json`. You can still use the map image picker and bounds editor to test another area; uploaded images stay local in the browser.
 
 ## CSV Columns
 
