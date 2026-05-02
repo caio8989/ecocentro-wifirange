@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WiFi Range Heatmap</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg: #f3f4f6;
+      --text: #111827;
+      --muted: #4b5563;
+      --panel: #ffffff;
+      --line: #d1d5db;
+      --accent: #0f766e;
+      --danger: #b91c1c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    header {
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    h1,
+    h2 {
+      margin: 0;
+      line-height: 1.2;
+    }
+
+    h1 {
+      font-size: 1.15rem;
+    }
+
+    h2 {
+      font-size: 0.95rem;
+    }
+
+    a {
+      color: var(--accent);
+      font-weight: 700;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(20rem, 24rem) 1fr;
+      min-height: calc(100vh - 4rem);
+    }
+
+    aside {
+      padding: 1rem;
+      display: grid;
+      align-content: start;
+      gap: 1rem;
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+      overflow: auto;
+    }
+
+    section {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    label {
+      display: grid;
+      gap: 0.35rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    input,
+    textarea,
+    select,
+    button {
+      width: 100%;
+      min-height: 2.5rem;
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      padding: 0.55rem 0.7rem;
+      background: var(--panel);
+      color: var(--text);
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 8rem;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.8rem;
+    }
+
+    button {
+      border: 0;
+      background: var(--accent);
+      color: white;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    .map-wrap {
+      position: relative;
+      min-width: 0;
+      min-height: 24rem;
+      overflow: auto;
+      background: #111827;
+    }
+
+    canvas {
+      display: block;
+      max-width: none;
+      background: #111827;
+    }
+
+    .network-list {
+      display: grid;
+      gap: 0.35rem;
+      max-height: 20rem;
+      overflow: auto;
+      padding-right: 0.25rem;
+    }
+
+    .network-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.45rem;
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      background: var(--panel);
+      cursor: pointer;
+    }
+
+    .network-row input {
+      width: auto;
+      min-height: auto;
+    }
+
+    .swatch {
+      width: 1rem;
+      height: 1rem;
+      border-radius: 999px;
+      border: 2px solid white;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    }
+
+    .network-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 0.85rem;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+
+    .metric {
+      padding: 0.65rem;
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      background: var(--panel);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 1.15rem;
+    }
+
+    .metric span,
+    .hint {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111827;
+        --text: #f9fafb;
+        --muted: #9ca3af;
+        --panel: #1f2937;
+        --line: #374151;
+      }
+    }
+
+    @media (max-width: 860px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>WiFi Range Heatmap</h1>
+    <a href="./">GPS Bridge</a>
+  </header>
+
+  <main>
+    <aside>
+      <section>
+        <h2>Data</h2>
+        <label>
+          CSV log
+          <input id="csvFile" type="file" accept=".csv,text/csv">
+        </label>
+        <label>
+          Map image
+          <input id="imageFile" type="file" accept="image/*">
+        </label>
+        <label>
+          Bounds JSON
+          <textarea id="boundsInput" spellcheck="false">{
+  "image": "assets/map.png",
+  "bounds": {
+    "north": -23.5500,
+    "south": -23.5550,
+    "west": -46.6350,
+    "east": -46.6280
+  },
+  "analysisRectangle": {
+    "north": -23.5510,
+    "south": -23.5540,
+    "west": -46.6340,
+    "east": -46.6290
+  }
+}</textarea>
+        </label>
+        <button id="applyBounds">Apply Bounds</button>
+        <p class="hint">Drag on the map to set the analysis rectangle. Use SSID+BSSID when repeaters share names.</p>
+      </section>
+
+      <section>
+        <h2>Networks</h2>
+        <label>
+          Group by
+          <select id="groupBy">
+            <option value="ssid_bssid">SSID + BSSID</option>
+            <option value="ssid">SSID</option>
+          </select>
+        </label>
+        <button id="toggleAll" class="secondary">Toggle All Visible</button>
+        <div id="networkList" class="network-list"></div>
+      </section>
+
+      <section>
+        <h2>Coverage Analysis</h2>
+        <div class="metric-grid" id="metrics"></div>
+        <p id="status" class="status">Load a CSV and map image to start.</p>
+      </section>
+    </aside>
+
+    <div class="map-wrap">
+      <canvas id="mapCanvas"></canvas>
+    </div>
+  </main>
+
+  <script>
+    const csvFileInput = document.querySelector('#csvFile');
+    const imageFileInput = document.querySelector('#imageFile');
+    const boundsInput = document.querySelector('#boundsInput');
+    const applyBoundsButton = document.querySelector('#applyBounds');
+    const groupBySelect = document.querySelector('#groupBy');
+    const networkList = document.querySelector('#networkList');
+    const toggleAllButton = document.querySelector('#toggleAll');
+    const metrics = document.querySelector('#metrics');
+    const statusEl = document.querySelector('#status');
+    const canvas = document.querySelector('#mapCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const state = {
+      rows: [],
+      networks: [],
+      selected: new Set(),
+      image: null,
+      imageLoaded: false,
+      bounds: null,
+      analysisRectangle: null,
+      dragStart: null
+    };
+
+    const RSSI_MIN = -90;
+    const RSSI_MAX = -35;
+
+    function setStatus(message) {
+      statusEl.textContent = message;
+    }
+
+    function parseCsv(text) {
+      const rows = [];
+      let row = [];
+      let value = '';
+      let quoted = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const next = text[i + 1];
+        if (quoted) {
+          if (char === '"' && next === '"') {
+            value += '"';
+            i++;
+          } else if (char === '"') {
+            quoted = false;
+          } else {
+            value += char;
+          }
+        } else if (char === '"') {
+          quoted = true;
+        } else if (char === ',') {
+          row.push(value);
+          value = '';
+        } else if (char === '\n') {
+          row.push(value.replace(/\r$/, ''));
+          rows.push(row);
+          row = [];
+          value = '';
+        } else {
+          value += char;
+        }
+      }
+
+      if (value.length || row.length) {
+        row.push(value.replace(/\r$/, ''));
+        rows.push(row);
+      }
+
+      const header = rows.shift();
+      if (!header) return [];
+      return rows
+        .filter(items => items.length === header.length)
+        .map(items => Object.fromEntries(header.map((name, index) => [name, items[index]])));
+    }
+
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(file);
+      });
+    }
+
+    function loadImageFromUrl(url) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error(`Could not load map image: ${url}`));
+        image.src = url;
+      });
+    }
+
+    function loadImageFromFile(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = reject;
+          image.src = String(reader.result);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function normalizeRow(row) {
+      const lat = Number(row.lat);
+      const lon = Number(row.lon);
+      const rssi = Number(row.rssi_dbm);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(rssi)) {
+        return null;
+      }
+      return {
+        ssid: row.ssid || '(hidden)',
+        bssid: row.bssid || '',
+        rssi,
+        lat,
+        lon,
+        scanId: row.scan_id || '',
+        channel: row.channel || ''
+      };
+    }
+
+    function networkKey(row) {
+      if (groupBySelect.value === 'ssid') {
+        return row.ssid;
+      }
+      return `${row.ssid} | ${row.bssid}`;
+    }
+
+    function buildNetworks() {
+      const groups = new Map();
+      for (const row of state.rows) {
+        const key = networkKey(row);
+        const current = groups.get(key) || { key, label: key, rows: [], best: -Infinity, color: '' };
+        current.rows.push(row);
+        current.best = Math.max(current.best, row.rssi);
+        groups.set(key, current);
+      }
+
+      state.networks = [...groups.values()]
+        .sort((a, b) => b.best - a.best)
+        .map((network, index) => ({
+          ...network,
+          color: `hsl(${(index * 47) % 360} 78% 52%)`
+        }));
+
+      state.selected = new Set(state.networks.slice(0, 8).map(network => network.key));
+    }
+
+    function renderNetworkList() {
+      networkList.textContent = '';
+      for (const network of state.networks) {
+        const label = document.createElement('label');
+        label.className = 'network-row';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = state.selected.has(network.key);
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) {
+            state.selected.add(network.key);
+          } else {
+            state.selected.delete(network.key);
+          }
+          draw();
+        });
+
+        const name = document.createElement('span');
+        name.className = 'network-name';
+        name.title = network.label;
+        name.textContent = network.label;
+
+        const swatch = document.createElement('span');
+        swatch.className = 'swatch';
+        swatch.style.background = network.color;
+
+        label.append(checkbox, name, swatch);
+        networkList.append(label);
+      }
+    }
+
+    function latLonToPixel(lat, lon) {
+      const { north, south, west, east } = state.bounds;
+      const x = ((lon - west) / (east - west)) * canvas.width;
+      const y = ((north - lat) / (north - south)) * canvas.height;
+      return { x, y };
+    }
+
+    function pixelToLatLon(x, y) {
+      const { north, south, west, east } = state.bounds;
+      const lon = west + (x / canvas.width) * (east - west);
+      const lat = north - (y / canvas.height) * (north - south);
+      return { lat, lon };
+    }
+
+    function strength01(rssi) {
+      return Math.max(0, Math.min(1, (rssi - RSSI_MIN) / (RSSI_MAX - RSSI_MIN)));
+    }
+
+    function rssiGradientColor(rssi, alpha = 0.72) {
+      const t = strength01(rssi);
+      const hue = 120 * t;
+      return `hsla(${hue} 90% 48% / ${alpha})`;
+    }
+
+    function drawHeatPoint(x, y, rssi, color) {
+      const t = strength01(rssi);
+      const radius = 20 + t * 44;
+      const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      gradient.addColorStop(0, rssiGradientColor(rssi, 0.72));
+      gradient.addColorStop(0.32, color.replace('hsl(', 'hsla(').replace(')', ' / 0.34)'));
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = rssiGradientColor(rssi, 0.95);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    function drawAnalysisRectangle() {
+      if (!state.analysisRectangle || !state.bounds) return;
+      const northwest = latLonToPixel(state.analysisRectangle.north, state.analysisRectangle.west);
+      const southeast = latLonToPixel(state.analysisRectangle.south, state.analysisRectangle.east);
+      const x = Math.min(northwest.x, southeast.x);
+      const y = Math.min(northwest.y, southeast.y);
+      const width = Math.abs(southeast.x - northwest.x);
+      const height = Math.abs(southeast.y - northwest.y);
+      ctx.save();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([12, 8]);
+      ctx.strokeRect(x, y, width, height);
+      ctx.strokeStyle = '#111827';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, width, height);
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!state.imageLoaded) {
+        canvas.width = 1200;
+        canvas.height = 800;
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = '#f9fafb';
+        ctx.font = '20px system-ui';
+        ctx.fillText('Load a map image to render the heatmap.', 40, 60);
+        return;
+      }
+
+      ctx.drawImage(state.image, 0, 0, canvas.width, canvas.height);
+      if (!state.bounds) return;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      for (const network of state.networks) {
+        if (!state.selected.has(network.key)) continue;
+        for (const row of network.rows) {
+          if (!isInsideBounds(row.lat, row.lon, state.bounds)) continue;
+          const point = latLonToPixel(row.lat, row.lon);
+          drawHeatPoint(point.x, point.y, row.rssi, network.color);
+        }
+      }
+      ctx.restore();
+
+      drawAnalysisRectangle();
+      renderAnalysis();
+    }
+
+    function isInsideBounds(lat, lon, bounds) {
+      return lat <= bounds.north && lat >= bounds.south && lon >= bounds.west && lon <= bounds.east;
+    }
+
+    function isInsideRect(row, rect) {
+      if (!rect) return true;
+      return isInsideBounds(row.lat, row.lon, rect);
+    }
+
+    function median(values) {
+      if (!values.length) return NaN;
+      const sorted = [...values].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    }
+
+    function renderAnalysis() {
+      const inRect = state.rows.filter(row => isInsideRect(row, state.analysisRectangle));
+      const scanBest = new Map();
+      const networkSet = new Set();
+      for (const row of inRect) {
+        networkSet.add(networkKey(row));
+        const previous = scanBest.get(row.scanId);
+        if (previous === undefined || row.rssi > previous) {
+          scanBest.set(row.scanId, row.rssi);
+        }
+      }
+
+      const bestValues = [...scanBest.values()];
+      const strong = bestValues.filter(value => value >= -60).length;
+      const usable = bestValues.filter(value => value >= -70).length;
+      const weak = bestValues.filter(value => value < -80).length;
+      const coverage = bestValues.length ? Math.round((usable / bestValues.length) * 100) : 0;
+      const best = bestValues.length ? Math.max(...bestValues) : NaN;
+      const med = median(bestValues);
+
+      metrics.innerHTML = [
+        metric(inRect.length, 'Rows', 'GPS-tagged samples in rectangle'),
+        metric(networkSet.size, 'Networks', 'unique overlays detected'),
+        metric(`${coverage}%`, 'Usable', 'best signal >= -70 dBm'),
+        metric(Number.isFinite(med) ? `${Math.round(med)} dBm` : '-', 'Median', 'best per scan point'),
+        metric(Number.isFinite(best) ? `${Math.round(best)} dBm` : '-', 'Best', 'strongest observed signal'),
+        metric(weak, 'Weak', 'scan points below -80 dBm')
+      ].join('');
+
+      const strongPct = bestValues.length ? Math.round((strong / bestValues.length) * 100) : 0;
+      setStatus(`Analysis rectangle: ${inRect.length} rows, ${scanBest.size} scan points.
+Strong coverage: ${strongPct}% at >= -60 dBm.
+Usable coverage: ${coverage}% at >= -70 dBm.
+Selected overlays: ${state.selected.size}.`);
+    }
+
+    function metric(value, label, note) {
+      return `<div class="metric"><strong>${value}</strong><span>${label}</span><br><span>${note}</span></div>`;
+    }
+
+    async function applyConfig() {
+      const config = JSON.parse(boundsInput.value);
+      state.bounds = config.bounds;
+      state.analysisRectangle = config.analysisRectangle || config.bounds;
+
+      if (!state.imageLoaded && config.image) {
+        try {
+          state.image = await loadImageFromUrl(config.image);
+          state.imageLoaded = true;
+          canvas.width = state.image.naturalWidth;
+          canvas.height = state.image.naturalHeight;
+        } catch (error) {
+          setStatus(`${error.message}\nUpload the image manually or add it at docs/${config.image}.`);
+        }
+      }
+
+      draw();
+    }
+
+    csvFileInput.addEventListener('change', async () => {
+      const file = csvFileInput.files[0];
+      if (!file) return;
+      const text = await readFileAsText(file);
+      state.rows = parseCsv(text).map(normalizeRow).filter(Boolean);
+      buildNetworks();
+      renderNetworkList();
+      draw();
+      setStatus(`Loaded ${state.rows.length} GPS-tagged rows from ${file.name}.`);
+    });
+
+    imageFileInput.addEventListener('change', async () => {
+      const file = imageFileInput.files[0];
+      if (!file) return;
+      state.image = await loadImageFromFile(file);
+      state.imageLoaded = true;
+      canvas.width = state.image.naturalWidth;
+      canvas.height = state.image.naturalHeight;
+      draw();
+    });
+
+    applyBoundsButton.addEventListener('click', () => {
+      applyConfig().catch(error => setStatus(error.message));
+    });
+
+    groupBySelect.addEventListener('change', () => {
+      buildNetworks();
+      renderNetworkList();
+      draw();
+    });
+
+    toggleAllButton.addEventListener('click', () => {
+      if (state.selected.size) {
+        state.selected.clear();
+      } else {
+        state.selected = new Set(state.networks.map(network => network.key));
+      }
+      renderNetworkList();
+      draw();
+    });
+
+    canvas.addEventListener('pointerdown', event => {
+      if (!state.bounds) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      state.dragStart = {
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+      };
+    });
+
+    canvas.addEventListener('pointerup', event => {
+      if (!state.bounds || !state.dragStart) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const end = {
+        x: (event.clientX - rect.left) * scaleX,
+        y: (event.clientY - rect.top) * scaleY
+      };
+      const startGeo = pixelToLatLon(state.dragStart.x, state.dragStart.y);
+      const endGeo = pixelToLatLon(end.x, end.y);
+      state.analysisRectangle = {
+        north: Math.max(startGeo.lat, endGeo.lat),
+        south: Math.min(startGeo.lat, endGeo.lat),
+        west: Math.min(startGeo.lon, endGeo.lon),
+        east: Math.max(startGeo.lon, endGeo.lon)
+      };
+      state.dragStart = null;
+      draw();
+    });
+
+    applyConfig().finally(draw);
+  </script>
+</body>
+</html>

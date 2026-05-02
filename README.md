@@ -110,6 +110,46 @@ To clear the log, send:
 ERASE
 ```
 
+## Heatmap Viewer
+
+The GitHub Pages site also includes `docs/heatmap.html` for visualizing collected CSV logs over a georeferenced map image.
+
+Open:
+
+```text
+https://YOUR_GITHUB_USERNAME.github.io/ecocentro-wifirange/heatmap.html
+```
+
+Use it like this:
+
+1. Upload the CSV log, such as `wifi_range_dump.csv`.
+2. Upload the map/satellite image.
+3. Paste or edit the bounds JSON with the image edges in latitude/longitude.
+4. Toggle SSID/BSSID overlays in the network list.
+5. Drag on the map to set the coverage-analysis rectangle.
+
+The expected bounds JSON shape is:
+
+```json
+{
+  "image": "assets/map.png",
+  "bounds": {
+    "north": -23.5500,
+    "south": -23.5550,
+    "west": -46.6350,
+    "east": -46.6280
+  },
+  "analysisRectangle": {
+    "north": -23.5510,
+    "south": -23.5540,
+    "west": -46.6340,
+    "east": -46.6290
+  }
+}
+```
+
+If you add a predefined image at `docs/assets/map.png`, the page can load it automatically from GitHub Pages. Otherwise, use the map image file picker; the image stays local in the browser.
+
 ## CSV Columns
 
 ```text

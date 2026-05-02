@@ -1,0 +1,15 @@
+{
+  "image": "assets/map.png",
+  "bounds": {
+    "north": -23.5500,
+    "south": -23.5550,
+    "west": -46.6350,
+    "east": -46.6280
+  },
+  "analysisRectangle": {
+    "north": -23.5510,
+    "south": -23.5540,
+    "west": -46.6340,
+    "east": -46.6290
+  }
+}
