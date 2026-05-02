@@ -17,6 +17,7 @@ constexpr uint32_t kStatusIntervalMs = 10000;
 constexpr char kUartServiceUuid[] = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
 constexpr char kUartRxUuid[] = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"; // phone -> ESP32
 constexpr char kUartTxUuid[] = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"; // ESP32 -> phone
+constexpr size_t kBleChunkSize = 160;
 
 struct GpsFix {
   bool valid = false;
@@ -121,7 +122,18 @@ void notifyPhone(const String &message) {
   if (txCharacteristic != nullptr && bleConnected) {
     txCharacteristic->setValue(message.c_str());
     txCharacteristic->notify();
+    delay(15);
   }
+}
+
+void notifyPhoneRaw(char *data, size_t length) {
+  if (txCharacteristic == nullptr || !bleConnected || data == nullptr || length == 0) {
+    return;
+  }
+
+  txCharacteristic->setValue(reinterpret_cast<uint8_t *>(data), length);
+  txCharacteristic->notify();
+  delay(15);
 }
 
 void ensureLogHeader() {
@@ -226,6 +238,23 @@ void dumpLogToSerial() {
   file.close();
 }
 
+void dumpLogToBle() {
+  File file = LittleFS.open(kLogPath, "r");
+  if (!file) {
+    notifyPhone("No log file found");
+    return;
+  }
+
+  notifyPhone("CSV_BEGIN");
+  char buffer[kBleChunkSize];
+  while (file.available()) {
+    const size_t bytesRead = file.readBytes(buffer, sizeof(buffer));
+    notifyPhoneRaw(buffer, bytesRead);
+  }
+  file.close();
+  notifyPhone("CSV_END");
+}
+
 void eraseLog() {
   LittleFS.remove(kLogPath);
   ensureLogHeader();
@@ -241,7 +270,7 @@ void handleCommand(String payload) {
 
   if (payload.equalsIgnoreCase("DUMP")) {
     dumpLogToSerial();
-    notifyPhone("Log dumped to USB serial");
+    dumpLogToBle();
     return;
   }
 
@@ -280,6 +309,7 @@ class RxCallbacks : public BLECharacteristicCallbacks {
 
 void setupBle() {
   BLEDevice::init(kDeviceName);
+  BLEDevice::setMTU(185);
   BLEServer *server = BLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks());
 

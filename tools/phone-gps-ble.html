@@ -44,6 +44,21 @@
       opacity: 0.55;
     }
 
+    a[hidden] {
+      display: none;
+    }
+
+    a {
+      min-height: 3rem;
+      display: grid;
+      place-items: center;
+      border-radius: 0.5rem;
+      background: #2563eb;
+      color: white;
+      font-weight: 700;
+      text-decoration: none;
+    }
+
     pre {
       min-height: 12rem;
       padding: 1rem;
@@ -68,6 +83,7 @@
     <button id="connect">Connect ESP32</button>
     <button id="dump" disabled>Ask ESP32 to Dump Log</button>
     <button id="erase" disabled>Erase ESP32 Log</button>
+    <a id="download" hidden download="wifi_range.csv">Download CSV</a>
     <pre id="log">Open this page in Chrome on Android over HTTPS or localhost.</pre>
   </main>
 
@@ -79,20 +95,54 @@
     const connectButton = document.querySelector('#connect');
     const dumpButton = document.querySelector('#dump');
     const eraseButton = document.querySelector('#erase');
+    const downloadLink = document.querySelector('#download');
     const log = document.querySelector('#log');
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     let rxCharacteristic;
     let watchId;
+    let csvMode = false;
+    let csvText = '';
 
     function writeLine(message) {
       log.textContent += `\n${new Date().toLocaleTimeString()} ${message}`;
       log.scrollTop = log.scrollHeight;
     }
 
-    async function send(text) {
+    function handleEsp32Message(message) {
+      if (message === 'CSV_BEGIN') {
+        csvMode = true;
+        csvText = '';
+        downloadLink.hidden = true;
+        writeLine('esp32 sending CSV...');
+        return;
+      }
+
+      if (message === 'CSV_END') {
+        csvMode = false;
+        const blob = new Blob([csvText], { type: 'text/csv' });
+        downloadLink.href = URL.createObjectURL(blob);
+        downloadLink.hidden = false;
+        writeLine(`esp32 CSV received (${csvText.length} bytes)`);
+        return;
+      }
+
+      if (csvMode) {
+        csvText += message;
+        return;
+      }
+
+      writeLine(`esp32 ${message}`);
+    }
+
+    async function send(text, withResponse = false) {
       if (!rxCharacteristic) return;
-      await rxCharacteristic.writeValueWithoutResponse(encoder.encode(text));
+      const value = encoder.encode(text);
+      if (withResponse && rxCharacteristic.writeValueWithResponse) {
+        await rxCharacteristic.writeValueWithResponse(value);
+      } else {
+        await rxCharacteristic.writeValueWithoutResponse(value);
+      }
     }
 
     function sendPosition(position) {
@@ -104,7 +154,7 @@
         accuracy: coords.accuracy,
         speed: coords.speed
       };
-      send(JSON.stringify(fix)).catch(error => writeLine(`send failed: ${error.message}`));
+      send(JSON.stringify(fix)).catch(error => writeLine(`gps send failed: ${error.message}`));
       writeLine(`gps ${fix.lat.toFixed(6)}, ${fix.lon.toFixed(6)} acc ${Math.round(fix.accuracy)}m`);
     }
 
@@ -120,7 +170,7 @@
         const txCharacteristic = await service.getCharacteristic(TX_UUID);
         await txCharacteristic.startNotifications();
         txCharacteristic.addEventListener('characteristicvaluechanged', event => {
-          writeLine(`esp32 ${decoder.decode(event.target.value)}`);
+          handleEsp32Message(decoder.decode(event.target.value));
         });
 
         watchId = navigator.geolocation.watchPosition(sendPosition, error => {
@@ -143,13 +193,23 @@
         eraseButton.disabled = false;
         writeLine('connected; GPS streaming started');
       } catch (error) {
+        if (error.name === 'NotAllowedError') {
+          writeLine('Bluetooth scan was denied. On Android, enable Chrome permissions for Nearby devices and Location, then reset this site permission and try again.');
+          return;
+        }
         writeLine(error.message);
       }
     });
 
-    dumpButton.addEventListener('click', () => send('DUMP'));
-    eraseButton.addEventListener('click', () => send('ERASE'));
+    dumpButton.addEventListener('click', () => {
+      writeLine('requesting CSV dump...');
+      send('DUMP', true).catch(error => writeLine(`dump failed: ${error.message}`));
+    });
+
+    eraseButton.addEventListener('click', () => {
+      writeLine('requesting log erase...');
+      send('ERASE', true).catch(error => writeLine(`erase failed: ${error.message}`));
+    });
   </script>
 </body>
 </html>
-

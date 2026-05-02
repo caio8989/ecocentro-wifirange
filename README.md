@@ -88,18 +88,21 @@ If the phone still cannot find `WiFiRangeLogger`:
 - Open the ESP32 serial monitor and confirm it prints `WiFiRangeLogger ready`.
 - Press the ESP32 reset button, then scan again from the web page or BLE app.
 - On Android, enable Bluetooth and Location, and allow nearby-device/location permissions for Chrome or the BLE app.
+- If Chrome says `User denied the browser permission to scan for Bluetooth devices`, open Android app settings for Chrome and allow `Nearby devices` and `Location`. Then open the page's site settings in Chrome and reset/allow Bluetooth for the GitHub Pages URL.
 - Use Chrome on Android for the web page. iPhone Safari and Chrome on iOS do not support Web Bluetooth.
 - Make sure you are scanning for BLE devices, not only paired Classic Bluetooth devices.
 
 ## Inspect the Log
 
-Open the serial monitor and send:
+On the phone page, tap `Ask ESP32 to Dump Log`. The ESP32 streams the CSV back over BLE, and the page shows a `Download CSV` link when the transfer finishes.
+
+You can also open the serial monitor and send:
 
 ```text
 DUMP
 ```
 
-The ESP32 prints the CSV between `BEGIN WIFI RANGE CSV` and `END WIFI RANGE CSV`.
+The ESP32 prints the CSV between `BEGIN WIFI RANGE CSV` and `END WIFI RANGE CSV`, and also sends it over BLE if a phone is connected.
 
 To clear the log, send:
 
